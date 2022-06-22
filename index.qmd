@@ -1,0 +1,208 @@
+---
+title: "Excluding online data in R with the {excluder} package"
+author: "<b>Jeffrey R. Stevens</b>"
+date: "Department of Psychology<br>Center for Brain, Biology & Behavior<br>University of Nebraska-Lincoln<br>@JeffStevensADML <br> https://jeffreyrstevens.github.io/sips2022"
+format:
+  revealjs: 
+    theme: [moon, custom.scss]
+    slide-number: true
+---
+
+## Online survey data
+
+<style>
+.aligncenter {
+    text-align: center;
+}
+</style>
+
+The travails of recruiting online participants
+
+* bots
+* incomplete surveys
+* fast or slow completion times
+* unacceptable screen types
+* country violations
+
+::: {.footer}
+[Aruguete et al., 2019](https://doi.org/10.1080/13645579.2018.1563966); [Chmielewski & Kucker, 2020](https://doi.org/10.1177/1948550619875149); [Eyal et al., 2021](https://doi.org/10.3758/s13428-021-01694-3); [Gupta et al., 2021](http://arxiv.org/abs/2107.05064)
+:::
+
+::: {.notes}
+Recruiting online participants for research studies from sources such as Amazon's Mechanical Turk can result in low-quality data including data from automated bots, incomplete surveys, and fast or slow completion times. Participants may also ignore your requests to use specific types of devices. Or they may be located in a country that you're not allowed test in.
+:::
+
+
+
+## {excluder}
+
+Help researchers check for or remove potentially problematic data
+
+* [docs.ropensci.org/excluder/](https://docs.ropensci.org/excluder/)
+* Built around Qualtrics and Mechanical Turk
+* Emphasis is on metadata not survey-specific data
+
+<p class="aligncenter">
+    <img src="images/logo.png" width="200" />
+</p>
+
+::: {.notes}
+So I developed the {excluder} package, which is hosted by rOpenSci. The goal of excluder is to help researchers check for potentially problematic data. excluder was built around Qualtrics and Mechanical Turk, but it is extensible beyond those systems. Note that excluder works with metadata about participants rather than study-specific responses that they may give. So you should use other filtering options to exclude based on participant responses to study questions.
+:::
+
+
+<!-- ## Example data -->
+
+<!-- ```{r echo = TRUE} -->
+<!-- library(excluder) -->
+
+<!-- head(qualtrics_text) -->
+<!-- ``` -->
+
+<!-- ::: {.notes} -->
+<!-- First, let's look at some example data that comes with the package: the qualtrics_text data set. It starts off with the standard start and end date then has the preview status column that indicates whether the survey was taken as a preview or as an actual session. As long as you didn't anonymize your data, you will have a column of IP addresses which we will use. Then the progress column gives a percentage of the survey completed. Duration tells us how long it took to complete the survey. Finished is just a binary variable for whether Progress is 100 or not. ... Then, again if you didn't anonymize your data, you will have geolocation, then user language. Now if you added a meta info question to your survey (which I recommend, if you have permission to do so), then you will have the browser type and version, the operating system, and the screen resolution. There are no real survey questions in this data set, only metadata since that's what excluder works with. -->
+<!-- ::: -->
+
+
+## Exclusion criteria
+
+<!-- {excluder} detects 7 exclusion criteria -->
+
+<!-- ::: {.incremental} -->
+* Qualtrics preview status (`preview`)
+* Survey progress (`progress`)
+* Survey completion time (`duration`)
+* IP address country (`ip`)^1^
+* Geolocation in US (`location`)^1^
+* Duplicate IP address (`duplicates`)^1^
+* Screen resolution (`resolution`)^2^
+<!-- ::: -->
+
+<p style="font-size:24px;">^1^ Must have non-anonymized data in Qualtrics</p>
+
+<p style="font-size:24px;">^2^ Must have collected meta information in Qualtrics</p>
+
+::: {.notes}
+Using those participant metadata, excluder can detect 7 exclusion criteria. It can detect whether the survey was run in Preview mode or how far a participant progressed in the survey. It can also detect surveys that took less than or more than a certain amount of time to complete. It can use IP addresses to assess if surveys come from a specific country (of course, VPNs can hide the actual countries of origin, so be careful with this). Similarly, it can use the geolocation data to tell if they surveys are coming from the US (but unfortunately it can't detect other countries at the moment). It can detect entries coming from the same IP address (but this of course runs the risk of catching legitimate entries from the same house, dorm, or shared computer). And finally it can detect screen resolution for example to see if participants are using their phones when you asked them to use a computer. Note that you need to have non-anonymized data and you must collect computer meta data to use these criteria. So these are the 7 criteria that we can detect. Now, what do we do with them?
+:::
+
+<!-- ## Actions -->
+
+<!-- {excluder} can do three actions with the exclusion types -->
+
+<!-- * mark -->
+<!-- * check -->
+<!-- * exclude -->
+
+
+<!-- ::: {.notes} -->
+<!-- Well, we can do three different actions with each of these criteria. We can mark, check, or exclude them. And I'll walk through each of these. -->
+<!-- ::: -->
+
+## Marking
+
+Create new column(s) marking rows that meet criteria with `mark_*()`
+
+```{r echo = TRUE, message = TRUE}
+library(excluder)
+df <- qualtrics_text %>%
+  mark_preview() %>%
+  mark_duration(min_duration = 200, max_duration = 600)
+```
+
+::: {.fragment}
+```{r}
+df[, c(3, 6, (ncol(df) - 1):ncol(df))]
+
+```
+:::
+
+
+::: {.notes}
+The backbone of this package is a set of `mark` functions, one for each of the exclusion criteria. Mark functions make new columns with the exclusion criteria output appended to the existing data frame. So you pass a data frame to the mark functions to see which rows meet the exclusion criteria. In this example, we create a new data frame called `df` that passes the `qualtrics_text` data frame to two `mark` functions. Note that these functions are pipeable using the magrittr or base R pipes. So we run the `mark_preview` function then the `mark_duration` function where we specify a minimum duration of 200 and a maximum duration of 600. In this case, this is the number of seconds that  the participant worked with the study.
+First, you'll notice that you get messages for each of the `mark` functions showing the outcome. Two of the rows were labeled as Previews, so we should definitely get rid of those later. Also, we can see that 23 rows had durations under 200 and another 8 had durations over 600.
+
+[Advance slide]
+
+Here we are looking at a subset of columns of the `df` dataframe, focusing just on the columns that give the preview and duration information, and then the two new columns added that mark the preview rows and the rows with fast and slow durations.
+:::
+
+## Checking
+
+Extract rows that meet criteria with `check_*()`
+
+```{r echo = TRUE, message = TRUE}
+check_progress(qualtrics_text)
+```
+
+::: {.notes}
+So again the `mark` functions just append columns that mark the criteria. If we want to pull out just the rows that meet the criteria, we can use the `check` functions, which extract and return those rows. Here we're looking at the output of `check_progress`, which first tells us that six of the rows met the criterion. Then it returns only those rows that meet the criterion---in this case, the six rows that have progress percentages less than 100.
+:::
+
+
+## Excluding
+
+Remove rows that meet criteria with `exclude_*()`
+
+<!-- ::: {.fragment} -->
+```{r echo = TRUE, message = TRUE}
+qualtrics_text %>%
+  exclude_duplicates()
+```
+<!-- ::: -->
+
+::: {.notes}
+Once you've marked and/or checked your data for exclusion criteria, then you'll probably want to remove some of those rows. That's where the `exclude` functions come in. Here, I have excluded rows that have duplicate IP addresses. First, it tells us that 10 rows have been excluded, leaving 90 rows. And we can see that this is true.
+:::
+
+
+## Excluding with multiple criteria
+
+```{r echo = TRUE, message = TRUE}
+qualtrics_text %>%
+  exclude_preview() %>%
+  exclude_progress() %>%
+  exclude_duplicates() %>%
+  exclude_duration(min_duration = 100) %>%
+  exclude_resolution() %>%
+  exclude_ip() %>%
+  exclude_location()
+```
+
+::: {.notes}
+Of course, you may want to exclude based on multiple criteria, and you can just pipe them together. Here, I used all seven exclusion criteria. You can see all of the messages that each function produces to track the number of rows excluded at each step. Note that the input for each function is the output of the previous function, so the data frame size decreases at each step. In then end, we end up with 72 rows, which we can see here. So this is the main goal of the excluder package: to help you quickly exclude rows of data based on metadata about your participants and their participation in your study.
+:::
+
+
+<!-- ## Helper functions -->
+
+<!-- * Remove Qualtrics label rows  -->
+<!--   * `remove_label_rows()` -->
+<!-- * Use Qualtrics question labels as column names -->
+<!--   * `use_labels()` -->
+<!-- * Deidentify data -->
+<!--   * `deidentify()` -->
+
+<!-- ::: {.notes} -->
+<!-- There are also a few helper functions to help with naming columns and then removing the columns with identifiable information in them. You can check out the package vignette and documentation for more information on them. -->
+<!-- ::: -->
+
+
+## More info
+
+* CRAN : [https://cran.r-project.org/package=excluder](https://cran.r-project.org/package=excluder)
+
+* Website: [docs.ropensci.org/excluder/](https://docs.ropensci.org/excluder/)
+
+* GitHub: [https://github.com/ropensci/excluder](https://github.com/ropensci/excluder/)
+
+* Slides: [https://jeffreyrstevens.github.io/sips2022](https://jeffreyrstevens.github.io/sips2022)
+
+* Email: [jeffrey.r.stevens@protonmail.com](mailto:jeffrey.r.stevens@protonmail.com)
+
+* Twitter: [@JeffStevensADML](https://twitter.com/JeffStevensADML)
+
+::: {.notes}
+If you would like to learn more about the excluder package, you can install it from CRAN and check out the website. Please give it a spin and stress test it with your data and workflow. If you find any bugs or think of new features, please submit an issue on the GitHub repo. If you have any questions, please contact me here. I look forward to hearing from you. Thank you for your time!
+:::
+
